@@ -2,7 +2,7 @@
   "name": "instagram-browser-daemon",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "src/index.mjs",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -17,6 +17,8 @@
   },
   "homepage": "https://github.com/Azq2/instagram-browser-daemon#readme",
   "dependencies": {
-    "puppeteer-core": "^5.5.0"
+    "express": "^4.17.1",
+    "puppeteer-core": "^5.5.0",
+    "yargs": "^16.2.0"
   }
 }
