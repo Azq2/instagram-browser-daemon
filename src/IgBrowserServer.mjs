@@ -175,7 +175,7 @@ export class IgBrowserServer {
 					if (task.data.type == "user") {
 						task.result = await this.browser.exploreUser(task.data.name);
 					} else if (task.data.type == "hashtag") {
-						task.result = await this.browser.exploreUser(task.data.name);
+						task.result = await this.browser.exploreTag(task.data.name);
 					} else {
 						task.result = {};
 					}

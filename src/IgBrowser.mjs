@@ -4,6 +4,8 @@ import {fileURLToPath} from 'url';
 import fs from 'fs';
 import URL from 'url';
 
+const MAX_EDGES = 12;
+
 export class IgBrowser {
 	constructor() {
 		
@@ -254,6 +256,7 @@ export class IgBrowser {
 	
 	async _parseFeed(tag) {
 		let result_graphql = {};
+		let edge_replaces = {};
 		
 		let shared_data = await this.page.evaluate(() => window._sharedData);
 		this._checkSharedData(shared_data);
@@ -271,20 +274,20 @@ export class IgBrowser {
 		// Find edges
 		let hashtag_new_edges = graphql?.hashtag?.edge_hashtag_to_media?.edges;
 		if (hashtag_new_edges) {
-			result_graphql.new = hashtag_new_edges;
-			all_edges = all_edges.concat(hashtag_new_edges);
+			result_graphql.new = hashtag_new_edges.slice(0, MAX_EDGES);
+			all_edges = all_edges.concat(result_graphql.new);
 		}
 		
 		let hashtag_top_edges = graphql?.hashtag?.edge_hashtag_to_top_posts?.edges;
 		if (hashtag_top_edges) {
 			result_graphql.top = hashtag_top_edges;
-			all_edges = all_edges.concat(hashtag_top_edges);
+			all_edges = all_edges.concat(result_graphql.top);
 		}
 		
 		let user_edges = graphql?.user?.edge_owner_to_timeline_media?.edges;
 		if (user_edges) {
-			result_graphql.all = user_edges;
-			all_edges = all_edges.concat(user_edges);
+			result_graphql.all = user_edges.slice(0, MAX_EDGES);
+			all_edges = all_edges.concat(result_graphql.all);
 		}
 		
 		if (!all_edges.length) {
@@ -341,14 +344,23 @@ export class IgBrowser {
 					
 					try {
 						this.info('--> wait for edge graphql...');
-						result_graphql[edge.node.shortcode] = (await graphql_promise).json;
+						let api_response = (await graphql_promise).json;
+						
+						let edge_node = api_response?.graphql?.shortcode_media;
+						if (!edge_node)
+							edge_node = api_response?.data?.shortcode_media;
+						
+						if (!edge_node)
+							throw new Error("Edge node data not found!");
+						
+						edge_replaces[edge_node.shortcode] = {node: edge_node};
 					} catch (e) {
-						this.info('--> edge not found?');
+						this.error('--> edge not found?');
 						this.error(e);
 					}
 					
 					this.info('--> done, close edge page...');
-					await delay(rand(500, 800));
+					await delay(rand(800, 1200));
 					await this.page.goBack();
 					await delay(rand(300, 400));
 				}
@@ -356,6 +368,12 @@ export class IgBrowser {
 		} catch (e) {
 			this.error(`Can't get extra info for special edges!`);
 			this.error(e);
+		}
+		
+		for (let k in result_graphql) {
+			result_graphql[k] = result_graphql[k].map(function (old_edge) {
+				return edge_replaces[old_edge.node.shortcode] || old_edge;
+			});
 		}
 		
 		return {
