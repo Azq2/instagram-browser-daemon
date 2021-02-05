@@ -4,8 +4,6 @@ import {fileURLToPath} from 'url';
 import fs from 'fs';
 import URL from 'url';
 
-const MAX_EDGES = 12;
-
 export class IgBrowser {
 	constructor() {
 		
@@ -30,7 +28,14 @@ export class IgBrowser {
 		this.page.on('console', message => this.info(`${message.type()}: ${message.text()}`));
 		
 		// Log all network requests
-		this.page.on('request', (req) => {
+		this.page.on('request', async (req) => {
+			/*
+			if (req.url().indexOf('fetch_suggested_count') >= 0) {
+				this.warn(`SKIP ${req.resourceType()}: ${req.method()} ${req.url()}`);
+				return;
+			}
+			*/
+			
 			if (req.url().indexOf('data:') !== 0) {
 				let parsed_url = URL.parse(req.url(), true);
 				if (!parsed_url.hostname.match(/(^|\.)(instagram\.com|cdninstagram\.com|facebook\.net|fbcdn\.net)$/i)) {
@@ -40,8 +45,17 @@ export class IgBrowser {
 				}
 			}
 			
-			if (!req.resourceType().match(/^(image|stylesheet|script)$/))
+			if (!req.resourceType().match(/^(image|stylesheet|script)$/)) {
 				this.info(`${req.resourceType()}: ${req.method()} ${req.url()}`);
+				/*
+				if (req.url().indexOf('/ajax/bz') >= 0 || req.url().indexOf('/logging') >= 0) {
+					try {
+						this.info(decodeURIComponent(await req.postData()));
+					} catch (e) { }
+				}
+				*/
+			}
+			
 			req.continue();
 		});
 		
@@ -274,7 +288,7 @@ export class IgBrowser {
 		// Find edges
 		let hashtag_new_edges = graphql?.hashtag?.edge_hashtag_to_media?.edges;
 		if (hashtag_new_edges) {
-			result_graphql.new = hashtag_new_edges.slice(0, MAX_EDGES);
+			result_graphql.new = hashtag_new_edges;
 			all_edges = all_edges.concat(result_graphql.new);
 		}
 		
@@ -286,7 +300,7 @@ export class IgBrowser {
 		
 		let user_edges = graphql?.user?.edge_owner_to_timeline_media?.edges;
 		if (user_edges) {
-			result_graphql.all = user_edges.slice(0, MAX_EDGES);
+			result_graphql.all = user_edges;
 			all_edges = all_edges.concat(result_graphql.all);
 		}
 		
@@ -297,12 +311,21 @@ export class IgBrowser {
 		}
 		
 		try {
+			let limit = 5;
+			
 			for (let edge of all_edges) {
 				if (edge.node.__typename == "GraphSidecar" || edge.node.__typename == "GraphVideo") {
 					if (edge.node.__typename == "GraphSidecar" && edge.node.edge_sidecar_to_children)
 						continue;
 					if (edge.node.__typename == "GraphVideo" && edge.node.video_url)
 						continue;
+					
+					if (!limit) {
+						edge_replaces[edge.node.shortcode] = {node: false};
+						continue;
+					}
+					
+					limit--;
 					
 					this.info(`-> Found ${edge.node.__typename}(${edge.node.id}), need fetch additional data`);
 					
@@ -360,9 +383,9 @@ export class IgBrowser {
 					}
 					
 					this.info('--> done, close edge page...');
-					await delay(rand(800, 1200));
+					await delay(rand(1000, 2000));
 					await this.page.goBack();
-					await delay(rand(300, 400));
+					await delay(rand(3000, 4000));
 				}
 			}
 		} catch (e) {
@@ -371,7 +394,9 @@ export class IgBrowser {
 		}
 		
 		for (let k in result_graphql) {
-			result_graphql[k] = result_graphql[k].map(function (old_edge) {
+			result_graphql[k] = result_graphql[k].filter(function (old_edge) {
+				return !edge_replaces[old_edge.node.shortcode] || edge_replaces[old_edge.node.shortcode].node;
+			}).map(function (old_edge) {
 				return edge_replaces[old_edge.node.shortcode] || old_edge;
 			});
 		}
