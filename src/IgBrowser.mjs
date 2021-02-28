@@ -14,6 +14,12 @@ export class IgBrowser {
 		
 		fs.mkdirSync(chromium_dir, {recursive: true});
 		
+		let browser_hangs_timeout = setTimeout(() => {
+			this.error('Oh no! Browser hangs!!!1');
+			process.exit();
+		}, 60000);
+		
+		this.info('Puppeteer launch...');
 		this.browser = await puppeteer.launch({
 			executablePath:		"/usr/bin/chromium",
 			headless:			true,
@@ -22,6 +28,7 @@ export class IgBrowser {
 		
 		this.graphql_handlers = [];
 		
+		this.info('Puppeteer new page...');
 		this.page = await this.browser.newPage();
 		
 		// Log console
@@ -86,6 +93,11 @@ export class IgBrowser {
 		
 		// Disable cache
 		await this.page.setCacheEnabled(false);
+		
+		// Stop hangs detector
+		clearTimeout(browser_hangs_timeout);
+		
+		this.info('Puppeteer initialized!');
 	}
 	
 	getUser() {
