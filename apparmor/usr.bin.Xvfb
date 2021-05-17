@@ -1,0 +1,22 @@
+#include <tunables/global>
+
+"/usr/bin/Xvfb" {
+	#include <abstractions/base>
+	owner /tmp/.X*-lock wl,
+	owner /tmp/.X11-unix/* w,
+	owner /tmp/.tX*-lock w,
+	owner /tmp/server-*.xkm rw,
+	owner /var/lib/xkb/* r,
+	/etc/drirc r,
+	
+	@{system_share_dirs}/X11/** r,
+	@{system_share_dirs}/fonts/X11/** r,
+	@{system_share_dirs}/drirc.d/{,*.conf} r,
+	@{PROC}/@{pid}/cmdline r,
+	@{PROC}/cmdline r,
+	
+	/usr/share/X11/** r,
+	/bin/dash mrix,
+	/usr/bin/xkbcomp mrix,
+}
+

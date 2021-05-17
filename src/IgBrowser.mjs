@@ -236,7 +236,6 @@ export class IgBrowser {
 			if (login_btn.length) {
 				await mouseMoveAndClick(this.page, login_btn[0]);
 				await delay(rand(2000, 3000));
-				await this.page.screenshot({path: '/home/azq2/apps/xujxuj/www/files/test-screenshot.png'});
 				await this.page.waitForNavigation();
 			} else {
 				return {
