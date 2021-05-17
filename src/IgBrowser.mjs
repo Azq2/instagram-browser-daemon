@@ -3,6 +3,7 @@ import {dirname} from 'path';
 import {fileURLToPath} from 'url';
 import fs from 'fs';
 import URL from 'url';
+import {mouseMove, mouseMoveAndClick, rand, delay} from './utils.mjs';
 
 export class IgBrowser {
 	constructor() {
@@ -10,8 +11,7 @@ export class IgBrowser {
 	}
 	
 	async init() {
-		let chromium_dir = dirname(fileURLToPath(import.meta.url)) + "/../node_modules/.cache/chromium";
-		
+		let chromium_dir = "/tmp/chromium-instagram";
 		fs.mkdirSync(chromium_dir, {recursive: true});
 		
 		let browser_hangs_timeout = setTimeout(() => {
@@ -21,9 +21,48 @@ export class IgBrowser {
 		
 		this.info('Puppeteer launch...');
 		this.browser = await puppeteer.launch({
-			executablePath:		"/usr/bin/chromium",
-			headless:			true,
-			userDataDir:		chromium_dir 
+			executablePath:		dirname(fileURLToPath(import.meta.url)) + "/chromium.sh",
+			headless:			false,
+			ignoreDefaultArgs:	true,
+			pipe:				true,
+			userDataDir:		chromium_dir,
+			args:				[
+				'--disable-background-networking',
+				'--enable-features=NetworkService,NetworkServiceInProcess',
+				'--disable-background-timer-throttling',
+				'--disable-backgrounding-occluded-windows',
+				'--disable-breakpad',
+				'--disable-client-side-phishing-detection',
+				'--disable-component-extensions-with-background-pages',
+				'--disable-default-apps',
+				'--disable-dev-shm-usage',
+				'--disable-features=Translate,site-per-process',
+				'--disable-hang-monitor',
+				'--disable-ipc-flooding-protection',
+				'--disable-popup-blocking',
+				'--disable-prompt-on-repost',
+				'--disable-renderer-backgrounding',
+				'--disable-sync',
+				'--disable-automation',
+				'--force-color-profile=srgb',
+				'--metrics-recording-only',
+				'--no-first-run',
+				'--password-store=basic',
+				'--use-mock-keychain',
+				'--enable-blink-features=IdleDetection',
+				'--disable-blink-features=AutomationControlled',
+				'--lang=ru',
+				'--start-fullscreen',
+				'--display=:99',
+				'--flag-switches-begin',
+				'--disable-site-isolation-trials',
+				'--flag-switches-end',
+				'--enable-webgl',
+				'--use-gl=desktop',
+				'--ignore-gpu-blocklist',
+				'--ignore-gpu-blacklist',
+				'--user-data-dir=' + chromium_dir
+			]
 		});
 		
 		this.graphql_handlers = [];
@@ -34,15 +73,44 @@ export class IgBrowser {
 		// Log console
 		this.page.on('console', message => this.info(`${message.type()}: ${message.text()}`));
 		
+		// Emulate connection RTT
+		let session = await this.page.target().createCDPSession();
+		await session.send('Network.emulateNetworkConditions', {
+			downloadThroughput: 1.6 * 1024 * 1024 / 8 * .9,
+			uploadThroughput: 750 * 1024 / 8 * .9,
+			latency: 150 * 3.75,
+			offline: false,
+		});
+		
+		// Emulate dialog close
+		await this.page.on('dialog', async dialog => {
+			console.log("dialog: " + dialog.message());
+			await delay(rand(1000, 3000));
+			await dialog.dismiss();
+		});
+		
+		// Enable low-end linux desktop emulation
+		await this.page.emulate({
+			name: 'Desktop',
+			userAgent: 'Mozilla/5.0 (X11; Linux i686) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36',
+			viewport: {
+				width: 1366,
+				height: 768,
+				deviceScaleFactor: 1,
+				isMobile: false,
+				hasTouch: false,
+				isLandscape: false
+			}
+		});
+		
+		// Enable request interception
+		await this.page.setRequestInterception(true);
+		
+		// Disable cache
+		await this.page.setCacheEnabled(false);
+		
 		// Log all network requests
 		this.page.on('request', async (req) => {
-			/*
-			if (req.url().indexOf('fetch_suggested_count') >= 0) {
-				this.warn(`SKIP ${req.resourceType()}: ${req.method()} ${req.url()}`);
-				return;
-			}
-			*/
-			
 			if (req.url().indexOf('data:') !== 0) {
 				let parsed_url = URL.parse(req.url(), true);
 				if (!parsed_url.hostname.match(/(^|\.)(instagram\.com|cdninstagram\.com|facebook\.net|fbcdn\.net)$/i)) {
@@ -87,13 +155,6 @@ export class IgBrowser {
 			}
 		});
 		
-		// Enable mobile emulation
-		await this.page.emulate(puppeteer.devices["Nexus 4"]);
-		await this.page.setRequestInterception(true);
-		
-		// Disable cache
-		await this.page.setCacheEnabled(false);
-		
 		// Stop hangs detector
 		clearTimeout(browser_hangs_timeout);
 		
@@ -136,6 +197,7 @@ export class IgBrowser {
 			}
 			
 			await this.page.goto('https://www.instagram.com/accounts/login/', {waitUntil: 'domcontentloaded'});
+			await delay(rand(1000, 2000));
 			
 			// Need accept cookie usage
 			let need_cookie_accept = await this.page.$x('//div[contains(., "Accept cookies from Instagram")]');
@@ -145,9 +207,7 @@ export class IgBrowser {
 				
 				if (cookie_accept_button.length > 0) {
 					this.info('-> click Accept button');
-					await cookie_accept_button[0].click({
-						delay: rand(300, 500)
-					});
+					await mouseMoveAndClick(this.page, cookie_accept_button[0]);
 				} else {
 					return {
 						logged:	false,
@@ -160,10 +220,13 @@ export class IgBrowser {
 			await this.page.waitForSelector('input[name=username]', {visible: true});
 			
 			this.info('Fill username...');
+			
+			await mouseMove(this.page, await this.page.$('input[name=username]'));
 			await this.page.type('input[name=username]', username, {delay: rand(50, 100)});
 			await delay(rand(300, 500));
 			
 			this.info('Fill password...');
+			await mouseMove(this.page, await this.page.$('input[name=password]'));
 			await this.page.type('input[name=password]', password, {delay: rand(100, 300)});
 			await delay(rand(300, 500));
 			
@@ -171,9 +234,9 @@ export class IgBrowser {
 			let login_btn = await this.page.$x('//button[contains(., "Log In")]');
 			
 			if (login_btn.length) {
-				await login_btn[0].click({
-					delay: rand(30, 50)
-				});
+				await mouseMoveAndClick(this.page, login_btn[0]);
+				await delay(rand(2000, 3000));
+				await this.page.screenshot({path: '/home/azq2/apps/xujxuj/www/files/test-screenshot.png'});
 				await this.page.waitForNavigation();
 			} else {
 				return {
@@ -206,20 +269,21 @@ export class IgBrowser {
 				this.info('Need accept age...');
 				let btns = await this.page.$x('//button[contains(., "Submit")]');
 				
+				await mouseMove(this.page, await this.page.$('[title="Month:"]'));
 				await this.page.select('[title="Month:"]', '11');
 				await delay(rand(300, 500));
 				
+				await mouseMove(this.page, await this.page.$('[title="Year:"]'));
 				await this.page.select('[title="Year:"]', '1991');
 				await delay(rand(300, 500));
 			
+				await mouseMove(this.page, await this.page.$('[title="Day:"]'));
 				await this.page.select('[title="Day:"]', '1');
 				await delay(rand(300, 500));
 				
 				if (btns.length > 0) {
 					this.info('-> Click "Accept" button');
-					await btns[0].click({
-						delay: rand(300, 500)
-					});
+					await mouseMoveAndClick(this.page, btns[0]);
 					await this.page.waitForNavigation();
 					await delay(rand(300, 500));
 				} else {
@@ -375,7 +439,7 @@ export class IgBrowser {
 					}, 10000);
 					
 					this.info('--> click to edge element');
-					await shortcode_el.click({delay: rand(10, 50)});
+					await mouseMoveAndClick(this.page, shortcode_el);
 					
 					try {
 						this.info('--> wait for edge graphql...');
@@ -454,13 +518,3 @@ export class IgBrowser {
 		console.warn.call(console, '[warning]', ...arguments);
 	}
 };
-
-async function delay(timeout) {
-	return await new Promise((resolve, reject) => {
-		setTimeout(resolve, timeout);
-	});
-}
-
-function rand(min, max) {
-	return Math.random() * (max - min) + min;
-}

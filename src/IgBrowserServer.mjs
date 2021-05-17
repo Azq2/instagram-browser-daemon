@@ -46,7 +46,7 @@ export class IgBrowserServer {
 			} else {
 				let uniqid = this.addToQueue('login', {
 					username:	req.query.username.toLowerCase(),
-					password:	req.query.password.toLowerCase()
+					password:	req.query.password
 				});
 				
 				out.status = 200;
