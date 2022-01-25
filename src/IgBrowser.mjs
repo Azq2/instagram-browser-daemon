@@ -65,8 +65,6 @@ export class IgBrowser {
 			]
 		});
 		
-		this.graphql_handlers = [];
-		
 		this.info('Puppeteer new page...');
 		this.page = await this.browser.newPage();
 		
@@ -134,27 +132,6 @@ export class IgBrowser {
 			req.continue();
 		});
 		
-		// Log all network responses
-		this.page.on('response', async (response) => {
-			if (response.request().resourceType() == "xhr") {
-				if (response.url().indexOf('https://www.instagram.com/graphql/query') === 0 || response.url().indexOf('__a=1') > 0) {
-					let json;
-					try {
-						json = await response.json()
-					} catch (e) { }
-					
-					if (json) {
-						let new_graphql_handlers = [];
-						for (let handler of this.graphql_handlers) {
-							if (!handler(response.url(), json))
-								new_graphql_handlers.push(handler);
-						}
-						this.graphql_handlers = new_graphql_handlers;
-					}
-				}
-			}
-		});
-		
 		// Stop hangs detector
 		clearTimeout(browser_hangs_timeout);
 		
@@ -163,26 +140,6 @@ export class IgBrowser {
 	
 	getUser() {
 		return this.user;
-	}
-	
-	waitGraphql(filter_callback, timeout) {
-		return new Promise((resolve, reject) => {
-			let timeout_id = setTimeout(() => {
-				this.graphql_handlers = this.graphql_handlers.filter((v) => {
-					return v !== filter_callback;
-				});
-				reject(new Error("Timeout reached when wait graphql response..."));
-			}, timeout);
-			
-			this.graphql_handlers.push((url, json) => {
-				if (filter_callback(url, json)) {
-					clearTimeout(timeout_id);
-					resolve({url, json});
-					return true;
-				}
-				return false;
-			});
-		});
 	}
 	
 	async login(username, password) {
