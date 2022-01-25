@@ -356,6 +356,27 @@ export class IgBrowser {
 		}
 	}
 	
+	findMedia(json, media, path) {
+		path = path || [];
+		
+		if (Array.isArray(json)) {
+			for (let v of json)
+				this.findMedia(v, media, path);
+		} else if (json && typeof json == 'object') {
+			if (json?.media?.taken_at) {
+				let path_key = path.join('.');
+				media[path_key] = media[path_key] || [];
+				media[path_key].push(json.media);
+			} else {
+				for (let k in json) {
+					path.push(k);
+					this.findMedia(json[k], media, path);
+					path.pop();
+				}
+			}
+		}
+	}
+	
 	async _parseFeed(tag) {
 		let result_graphql = {};
 		let edge_replaces = {};
@@ -366,132 +387,21 @@ export class IgBrowser {
 		if (!this.user)
 			throw new Error('Not authenficated');
 		
-		// Find entry data
-		let graphql = shared_data?.entry_data?.TagPage?.[0]?.graphql;
-		if (!graphql)
-			graphql = shared_data?.entry_data?.ProfilePage?.[0]?.graphql;
+		let media_objects = {};
+		this.findMedia(shared_data, media_objects)
 		
-		let all_edges = [];
+		let total = 0;
+		for (let k in media_objects)
+			total += media_objects[k].length;
 		
-		// Find edges
-		let hashtag_new_edges = graphql?.hashtag?.edge_hashtag_to_media?.edges;
-		if (hashtag_new_edges) {
-			result_graphql.new = hashtag_new_edges;
-			all_edges = all_edges.concat(result_graphql.new);
-		}
-		
-		let hashtag_top_edges = graphql?.hashtag?.edge_hashtag_to_top_posts?.edges;
-		if (hashtag_top_edges) {
-			result_graphql.top = hashtag_top_edges;
-			all_edges = all_edges.concat(result_graphql.top);
-		}
-		
-		let user_edges = graphql?.user?.edge_owner_to_timeline_media?.edges;
-		if (user_edges) {
-			result_graphql.all = user_edges;
-			all_edges = all_edges.concat(result_graphql.all);
-		}
-		
-		if (!all_edges.length) {
-			this.warn('No edges found, empty page');
-			console.log(shared_data);
+		if (!total) {
+			this.warn('No media objects found, empty page');
 		} else {
-			this.info('Found ' + all_edges.length + ' edges');
-		}
-		
-		try {
-			let limit = 5;
-			
-			for (let edge of all_edges) {
-				if (edge.node.__typename == "GraphSidecar" || edge.node.__typename == "GraphVideo") {
-					if (edge.node.__typename == "GraphSidecar" && edge.node.edge_sidecar_to_children)
-						continue;
-					if (edge.node.__typename == "GraphVideo" && edge.node.video_url)
-						continue;
-					
-					if (!limit) {
-						edge_replaces[edge.node.shortcode] = {node: false};
-						continue;
-					}
-					
-					limit--;
-					
-					this.info(`-> Found ${edge.node.__typename}(${edge.node.id}), need fetch additional data`);
-					
-					this.info('--> scroll to edge...');
-					let shortcode_el;
-					for (let i = 0; i < 100; i++) {
-						shortcode_el = await this.page.$('a[href*="/' + edge.node.shortcode + '/"]');
-						if (!shortcode_el) {
-							await this.page.evaluate(() => {
-								window.scrollTo(0, document.documentElement.scrollTop + 33);
-							});
-							await delay(rand(10, 50));
-						}
-					}
-					
-					await this.page.hover('a[href*="/' + edge.node.shortcode + '/"]');
-					
-					if (!shortcode_el) {
-						this.error('--> edge element not found!!!');
-						continue;
-					}
-					
-					let graphql_promise = this.waitGraphql((url, json) => {
-						if (url.indexOf('/p/' + edge.node.shortcode) >= 0)
-							return true;
-						
-						let variables;
-						try {
-							let parsed_url = URL.parse(url, true);
-							variables = JSON.parse(parsed_url.query.variables);
-						} catch (e) { }
-						
-						if (variables && variables.shortcode == edge.node.shortcode)
-							return true;
-					}, 10000);
-					
-					this.info('--> click to edge element');
-					await mouseMoveAndClick(this.page, shortcode_el);
-					
-					try {
-						this.info('--> wait for edge graphql...');
-						let api_response = (await graphql_promise).json;
-						
-						let edge_node = api_response?.graphql?.shortcode_media;
-						if (!edge_node)
-							edge_node = api_response?.data?.shortcode_media;
-						
-						if (!edge_node)
-							throw new Error("Edge node data not found!");
-						
-						edge_replaces[edge_node.shortcode] = {node: edge_node};
-					} catch (e) {
-						this.error('--> edge not found?');
-						this.error(e);
-					}
-					
-					this.info('--> done, close edge page...');
-					await delay(rand(1000, 2000));
-					await this.page.goBack();
-					await delay(rand(3000, 4000));
-				}
-			}
-		} catch (e) {
-			this.error(`Can't get extra info for special edges!`);
-			this.error(e);
-		}
-		
-		for (let k in result_graphql) {
-			result_graphql[k] = result_graphql[k].filter(function (old_edge) {
-				return !edge_replaces[old_edge.node.shortcode] || edge_replaces[old_edge.node.shortcode].node;
-			}).map(function (old_edge) {
-				return edge_replaces[old_edge.node.shortcode] || old_edge;
-			});
+			this.info('Found ' + total + ' media objects');
 		}
 		
 		return {
-			graphql:	result_graphql
+			media:	media_objects
 		};
 	}
 	
