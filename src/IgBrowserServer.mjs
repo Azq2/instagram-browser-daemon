@@ -184,6 +184,7 @@ export class IgBrowserServer {
 			task.end = Date.now();
 			task.atime = Date.now();
 			
+			console.log(task.result);
 			console.log('# task done (' + (task.end - task.start) + ' ms)');
 			
 			this.browser_stop_timeout = setTimeout(() => this.stopBrowser(), 30000);

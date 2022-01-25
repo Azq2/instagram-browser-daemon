@@ -92,7 +92,7 @@ export class IgBrowser {
 		// Enable low-end linux desktop emulation
 		await this.page.emulate({
 			name: 'Desktop',
-			userAgent: 'Mozilla/5.0 (X11; Linux i686) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36',
+			userAgent: 'Mozilla/5.0 (X11; Linux i686) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/95.0.4638.54 Safari/537.36',
 			viewport: {
 				width: 1366,
 				height: 768,
@@ -196,14 +196,20 @@ export class IgBrowser {
 				await igLogout();
 			}
 			
-			await this.page.goto('https://www.instagram.com/accounts/login/', {waitUntil: 'domcontentloaded'});
+			await this.page.goto('https://www.instagram.com/', {waitUntil: 'domcontentloaded'});
 			await delay(rand(1000, 2000));
 			
 			// Need accept cookie usage
 			let need_cookie_accept = await this.page.$x('//div[contains(., "Accept cookies from Instagram")]');
+			if (!need_cookie_accept.length)
+				need_cookie_accept = await this.page.$x('//div[contains(., "Принимать файлы cookie")]');
+			
 			if (need_cookie_accept.length > 0) {
 				this.info('need accept cookies usage...');
 				let cookie_accept_button = await this.page.$x('//button[contains(., "Accept")]');
+				
+				if (!cookie_accept_button.length)
+					cookie_accept_button = await this.page.$x('//button[contains(., "Принять все")]');
 				
 				if (cookie_accept_button.length > 0) {
 					this.info('-> click Accept button');
@@ -216,7 +222,10 @@ export class IgBrowser {
 				}
 			}
 			
+			await delay(rand(300, 500));
+			
 			this.info('Wait for user login form....');
+			
 			await this.page.waitForSelector('input[name=username]', {visible: true});
 			
 			this.info('Fill username...');
@@ -232,6 +241,10 @@ export class IgBrowser {
 			
 			this.info('Click "Log In" button...');
 			let login_btn = await this.page.$x('//button[contains(., "Log In")]');
+			if (!login_btn.length)
+				login_btn = await this.page.$x('//button[contains(., "Войти")]');
+			
+			await delay(rand(300, 500));
 			
 			if (login_btn.length) {
 				await mouseMoveAndClick(this.page, login_btn[0]);
@@ -381,6 +394,7 @@ export class IgBrowser {
 		
 		if (!all_edges.length) {
 			this.warn('No edges found, empty page');
+			console.log(shared_data);
 		} else {
 			this.info('Found ' + all_edges.length + ' edges');
 		}
