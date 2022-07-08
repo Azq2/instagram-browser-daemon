@@ -230,8 +230,6 @@ export class IgBrowser {
 		try {
 			await this.page.goto('https://www.instagram.com/', {waitUntil: 'domcontentloaded'});
 			
-			await delay(rand(300, 500));
-			
 			// Need accept age
 			let need_confirm_age = await this.page.$x('//div[contains(., "Enter Your Date of Birth")]');
 			if (need_confirm_age.length > 0) {
@@ -260,8 +258,14 @@ export class IgBrowser {
 				}
 			}
 			
-			let shared_data = await this.page.evaluate(() => window._sharedData);
-			this._checkSharedData(shared_data);
+			for (let i = 0; i < 50; i++) {
+				await delay(rand(300, 500));
+				let shared_data = await this.page.evaluate(() => window._sharedData);
+				if (shared_data) {
+					this._checkSharedData(shared_data);
+					break;
+				}
+			}
 			
 			if (this.user) {
 				return {
@@ -338,8 +342,15 @@ export class IgBrowser {
 		let result_graphql = {};
 		let edge_replaces = {};
 		
-		let shared_data = await this.page.evaluate(() => window._sharedData);
-		this._checkSharedData(shared_data);
+		let shared_data;
+		for (let i = 0; i < 50; i++) {
+			await delay(rand(300, 500));
+			shared_data = await this.page.evaluate(() => window._sharedData);
+			if (shared_data) {
+				this._checkSharedData(shared_data);
+				break;
+			}
+		}
 		
 		if (!this.user)
 			throw new Error('Not authenficated');
