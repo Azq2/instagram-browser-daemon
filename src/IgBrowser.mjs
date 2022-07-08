@@ -112,22 +112,14 @@ export class IgBrowser {
 			if (req.url().indexOf('data:') !== 0) {
 				let parsed_url = URL.parse(req.url(), true);
 				if (!parsed_url.hostname.match(/(^|\.)(instagram\.com|cdninstagram\.com|facebook\.net|fbcdn\.net)$/i)) {
-					this.warn(`SKIP ${req.resourceType()}: ${req.method()} ${req.url()}`);
+					this.warn(`[${req.resourceType()}] ${req.method()} ${req.url()} (SKIP)`);
 					req.abort();
 					return;
 				}
 			}
 			
-			if (!req.resourceType().match(/^(image|stylesheet|script)$/)) {
-				this.info(`${req.resourceType()}: ${req.method()} ${req.url()}`);
-				/*
-				if (req.url().indexOf('/ajax/bz') >= 0 || req.url().indexOf('/logging') >= 0) {
-					try {
-						this.info(decodeURIComponent(await req.postData()));
-					} catch (e) { }
-				}
-				*/
-			}
+			if (!req.resourceType().match(/^(image|stylesheet|script)$/))
+				this.info(`[${req.resourceType()}] ${req.method()} ${req.url()}`);
 			
 			req.continue();
 		});
@@ -317,6 +309,18 @@ export class IgBrowser {
 		}
 	}
 	
+	waitResponse(pattern, timeout) {
+		return new Promise((resolve, reject) => {
+			this.current_req = {pattern, callback: resolve};
+			
+			this.current_req.timeout = setTimeout(() => {
+				let req = this.current_req;
+				this.current_req = false;
+				req.callback(false);
+			}, timeout);
+		});
+	}
+	
 	findMedia(json, media, path) {
 		path = path || [];
 		
@@ -324,10 +328,14 @@ export class IgBrowser {
 			for (let v of json)
 				this.findMedia(v, media, path);
 		} else if (json && typeof json == 'object') {
-			if (json?.media?.taken_at) {
+			if (json?.media?.taken_at || json?.media?.taken_at_timestamp) {
 				let path_key = path.join('.');
 				media[path_key] = media[path_key] || [];
 				media[path_key].push(json.media);
+			} else if (json?.taken_at || json?.taken_at_timestamp) {
+				let path_key = path.join('.');
+				media[path_key] = media[path_key] || [];
+				media[path_key].push(json);
 			} else {
 				for (let k in json) {
 					path.push(k);
@@ -342,6 +350,13 @@ export class IgBrowser {
 		let result_graphql = {};
 		let edge_replaces = {};
 		
+		let defer_response = this.page.waitForResponse((response) => {
+			let request = response.request();
+			return /api\/v1\/tags\/web_info|api\/v1\/users\/web_profile_info/i.test(request.url()) && request.method() != 'OPTIONS';
+		}, 60000);
+		
+		this.current_req = false;
+		
 		let shared_data;
 		for (let i = 0; i < 50; i++) {
 			await delay(rand(300, 500));
@@ -355,8 +370,10 @@ export class IgBrowser {
 		if (!this.user)
 			throw new Error('Not authenficated');
 		
+		let response = await (await defer_response).json();
+		
 		let media_objects = {};
-		this.findMedia(shared_data, media_objects)
+		this.findMedia(response, media_objects)
 		
 		let total = 0;
 		for (let k in media_objects)
